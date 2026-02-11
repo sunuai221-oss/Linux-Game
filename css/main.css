@@ -183,7 +183,8 @@ body {
 }
 
 .btn-theme,
-.btn-reset {
+.btn-reset,
+.btn-lang {
     background: none;
     border: 1px solid var(--border-strong);
     color: var(--text-secondary);
@@ -203,6 +204,18 @@ body {
 .btn-reset:hover {
     color: var(--accent-red);
     border-color: var(--accent-red);
+}
+
+.btn-lang {
+    font-size: 13px;
+    font-weight: 700;
+    padding: 6px 10px;
+    min-width: 40px;
+}
+
+.btn-lang:hover {
+    color: var(--accent-blue);
+    border-color: var(--accent-blue);
 }
 
 /* ===========================

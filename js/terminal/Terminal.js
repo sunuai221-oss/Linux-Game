@@ -4,8 +4,9 @@ import { CommandHistory } from './history.js';
 import { Autocomplete } from './autocomplete.js';
 
 export class Terminal {
-    constructor(fs, onCommandExecuted) {
+    constructor(fs, onCommandExecuted, i18n = null) {
         this.fs = fs;
+        this.i18n = i18n;
         this.onCommandExecuted = onCommandExecuted || (() => {});
         this.history = new CommandHistory();
         this.autocomplete = new Autocomplete(fs, registry);
@@ -265,12 +266,12 @@ export class Terminal {
         const displayPath = this.fs.displayPath(path);
 
         if (command === '/help') {
-            return { output: '[nano] Commandes: /help /show /save /exit' };
+            return { output: this._t('terminal.nanoPromptHelp', '[nano] Commands: /help /show /save /exit') };
         }
 
         if (command === '/show') {
             if (this.nanoSession.buffer.length === 0) {
-                return { output: '[nano] (buffer vide)' };
+                return { output: this._t('terminal.nanoBufferEmpty', '[nano] (empty buffer)') };
             }
 
             const lines = this.nanoSession.buffer.map((line, index) => {
@@ -288,7 +289,7 @@ export class Terminal {
 
             this.nanoSession.dirty = false;
             return {
-                output: `[nano] Sauvegarde de ${displayPath}`,
+                output: this._t('terminal.nanoSaved', '[nano] Saved {path}', { path: displayPath }),
                 nanoEvent: { action: 'save', path },
                 _mission: {
                     input: `nano --save ${displayPath}`,
@@ -301,7 +302,9 @@ export class Terminal {
             const hadUnsavedChanges = this.nanoSession.dirty;
             this.nanoSession = null;
             return {
-                output: hadUnsavedChanges ? '[nano] Sortie sans sauvegarde.' : '[nano] Sortie de nano.',
+                output: hadUnsavedChanges
+                    ? this._t('terminal.nanoExitUnsaved', '[nano] Exit without saving.')
+                    : this._t('terminal.nanoExitSaved', '[nano] Exiting nano.'),
                 nanoEvent: { action: 'exit', path },
                 _mission: {
                     input: `nano --exit ${displayPath}`,
@@ -312,7 +315,7 @@ export class Terminal {
 
         if (command.startsWith('/')) {
             return {
-                output: `[nano] Commande inconnue: ${command}. Utilise /help.`,
+                output: this._t('terminal.nanoUnknownCmd', '[nano] Unknown command: {command}. Use /help.', { command }),
                 isError: true,
             };
         }
@@ -381,10 +384,10 @@ export class Terminal {
  | |___| | | | | |_| |>  <| |_| | (_| | | | | | |  __/
  |_____|_|_| |_|\\__,_/_/\\_\\\\____|\\__,_|_| |_| |_|\\___|
 </span>
-Bienvenue dans <span class="output-info">Linux Game</span> ! Apprends les commandes Linux en t'amusant.
+${this._t('terminal.welcomeIntro', 'Welcome to <span class="output-info">Linux Game</span>! Learn Linux commands while playing.')}
 
-Tape <span class="output-info">help</span> pour voir les commandes disponibles.
-Tape <span class="output-info">man &lt;commande&gt;</span> pour le manuel d'une commande.
+${this._t('terminal.welcomeHelp', 'Type <span class="output-info">help</span> to see available commands.')}
+${this._t('terminal.welcomeMan', 'Type <span class="output-info">man &lt;command&gt;</span> for a command manual.')}
 
 `;
         this._appendOutput(banner, true);
@@ -392,5 +395,14 @@ Tape <span class="output-info">man &lt;commande&gt;</span> pour le manuel d'une 
 
     focus() {
         this.inputEl.focus();
+    }
+
+    _t(key, fallback, params = {}) {
+        if (!this.i18n || typeof this.i18n.t !== 'function') {
+            return String(fallback).replace(/\{(\w+)\}/g, (match, name) => {
+                return Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match;
+            });
+        }
+        return this.i18n.t(key, fallback, params);
     }
 }

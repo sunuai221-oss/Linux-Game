@@ -2,8 +2,11 @@ import { missions, levels } from './levels.js';
 import { storage } from './storage.js';
 
 export class MissionSystem {
-    constructor(fs) {
+    constructor(fs, i18n = null) {
         this.fs = fs;
+        this.i18n = i18n;
+        this.baseMissions = missions;
+        this.baseLevels = levels;
         this.missions = missions;
         this.levels = levels;
         this.completed = new Set();
@@ -13,6 +16,7 @@ export class MissionSystem {
         this.freeMode = false;
         this.commandHistory = [];
 
+        this._applyLocalization();
         this._loadProgress();
         this._ensurePermissionLessonFixtures();
         this._renderMissions();
@@ -85,7 +89,11 @@ export class MissionSystem {
 
             const title = document.createElement('div');
             title.className = 'level-group-title';
-            title.textContent = `Niveau ${level.id} — ${level.name}`;
+            title.textContent = this._t(
+                'mission.levelGroupTitle',
+                `Level ${level.id} - ${level.name}`,
+                { level: level.id, name: level.name }
+            );
             group.appendChild(title);
 
             for (const mission of levelMissions) {
@@ -102,7 +110,7 @@ export class MissionSystem {
 
         const hintBtn = document.createElement('button');
         hintBtn.className = 'btn-hint';
-        hintBtn.textContent = 'Afficher un indice';
+        hintBtn.textContent = this._t('ui.showHint', 'Show hint');
         hintBtn.id = 'hint-btn';
 
         const current = this.missions[this.currentMissionIndex];
@@ -155,7 +163,7 @@ export class MissionSystem {
             const lessonBtn = document.createElement('button');
             lessonBtn.className = 'btn-lesson';
             lessonBtn.textContent = '\uD83D\uDCD6';
-            lessonBtn.title = 'Voir la lecon';
+            lessonBtn.title = this._t('ui.viewLesson', 'View lesson');
             lessonBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this._toggleLesson(mission.id, wrapper);
@@ -261,7 +269,7 @@ export class MissionSystem {
     _showCompletionToast(title, points) {
         const toast = document.createElement('div');
         toast.className = 'mission-complete-toast';
-        toast.textContent = `Mission terminee ! "${title}" +${points} pts`;
+        toast.textContent = this._t('ui.missionCompleted', 'Mission completed! "{title}" +{points} pts', { title, points });
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 3000);
 
@@ -274,9 +282,9 @@ export class MissionSystem {
         const currentLevel = this.missions[this.currentMissionIndex]?.level || 5;
         const levelInfo = this.levels.find(l => l.id === currentLevel);
 
-        document.getElementById('level-badge').textContent = `Niveau ${currentLevel}`;
-        document.getElementById('level-name').textContent = levelInfo?.name || 'Termine !';
-        document.getElementById('score-display').textContent = `${this.score} pts`;
+        document.getElementById('level-badge').textContent = this._t('ui.levelBadge', 'Level {level}', { level: currentLevel });
+        document.getElementById('level-name').textContent = levelInfo?.name || this._t('ui.levelDone', 'Completed!');
+        document.getElementById('score-display').textContent = `${this.score} ${this._t('ui.pointsSuffix', 'pts')}`;
 
         const completedCount = this.completed.size;
         const totalCount = this.missions.length;
@@ -289,6 +297,12 @@ export class MissionSystem {
     setFreeMode(enabled) {
         this.freeMode = enabled;
         this._renderMissions();
+    }
+
+    setLanguage() {
+        this._applyLocalization();
+        this._renderMissions();
+        this._updateHeader();
     }
 
     _saveProgress() {
@@ -352,5 +366,26 @@ export class MissionSystem {
         this.currentMissionIndex = 0;
         this.commandHistory = [];
         storage.clear();
+    }
+
+    _applyLocalization() {
+        if (!this.i18n) {
+            this.missions = this.baseMissions;
+            this.levels = this.baseLevels;
+            return;
+        }
+
+        this.levels = this.i18n.localizeLevels(this.baseLevels);
+        this.missions = this.i18n.localizeMissions(this.baseMissions);
+        this._advanceToNext();
+    }
+
+    _t(key, fallback, params = {}) {
+        if (!this.i18n || typeof this.i18n.t !== 'function') {
+            return String(fallback).replace(/\{(\w+)\}/g, (match, name) => {
+                return Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match;
+            });
+        }
+        return this.i18n.t(key, fallback, params);
     }
 }

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Linux Game - Apprends le Terminal</title>
+    <title>Linux Game - Learn the Terminal</title>
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/terminal.css">
     <link rel="stylesheet" href="css/missions.css">
@@ -12,23 +12,24 @@
     <header id="app-header">
         <div class="header-left">
             <span class="logo">&#x1F427;</span>
-            <h1>Linux Game</h1>
+            <h1 id="app-title">Linux Game</h1>
         </div>
         <div class="header-center">
-            <span id="level-badge" class="badge">Niveau 1</span>
-            <span id="level-name" class="level-name">Premiers pas</span>
+            <span id="level-badge" class="badge">Level 1</span>
+            <span id="level-name" class="level-name">First Steps</span>
         </div>
         <div class="header-right">
             <span id="score-display" class="score">0 pts</span>
-            <button id="theme-toggle" class="btn-theme" title="Changer le theme">&#x263E;</button>
-            <button id="reset-btn" class="btn-reset" title="Recommencer">&#x21BB;</button>
+            <button id="lang-toggle" class="btn-lang" title="Switch to French">FR</button>
+            <button id="theme-toggle" class="btn-theme" title="Dark mode">&#x263E;</button>
+            <button id="reset-btn" class="btn-reset" title="Restart">&#x21BB;</button>
         </div>
     </header>
 
     <main id="app-main">
         <aside id="missions-panel">
             <div class="missions-header">
-                <h2>Missions</h2>
+                <h2 id="missions-title">Missions</h2>
                 <div class="progress-bar">
                     <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
                 </div>
@@ -43,7 +44,7 @@
                 <label class="toggle-label">
                     <input type="checkbox" id="free-mode-toggle">
                     <span class="toggle-slider"></span>
-                    Mode libre
+                    <span id="free-mode-label">Free mode</span>
                 </label>
             </div>
         </aside>

@@ -1,6 +1,11 @@
 import { registry } from './registry.js';
 
-export function registerUtilCommands(fs, terminal) {
+export function registerUtilCommands(fs, i18n = null) {
+    const t = (key, fallback, params = {}) => {
+        if (!i18n || typeof i18n.t !== 'function') return fallback;
+        return i18n.t(key, fallback, params);
+    };
+
     const resolveCountAndPath = (args, flags) => {
         // Support both "head -n 3 file" and "head file".
         if (flags.n === true && args.length > 0) {
@@ -19,12 +24,12 @@ export function registerUtilCommands(fs, terminal) {
     };
 
     // echo
-    registry.register('echo', (args, flags) => {
+    registry.register('echo', (args) => {
         return { output: args.join(' ') };
     }, 'Display text');
 
     // clear
-    registry.register('clear', (args, flags) => {
+    registry.register('clear', () => {
         return { output: '', clear: true };
     }, 'Clear the terminal screen');
 
@@ -123,11 +128,11 @@ export function registerUtilCommands(fs, terminal) {
     // nano (simplified in-terminal editor)
     registry.register('nano', (args, flags, stdin) => {
         if (stdin) {
-            return { output: 'nano: cannot read from pipe in this simplified mode', isError: true };
+            return { output: t('commands.nanoPipeNotSupported', 'nano: cannot read from pipe in this simplified mode'), isError: true };
         }
         if (args.length === 0) {
             return {
-                output: 'nano: missing file operand\nUsage: nano <file>',
+                output: t('commands.nanoMissingOperand', 'nano: missing file operand\nUsage: nano <file>'),
                 isError: true,
             };
         }
@@ -136,19 +141,23 @@ export function registerUtilCommands(fs, terminal) {
         const absPath = fs.resolvePath(rawPath);
         const node = fs.getNode(absPath);
         if (node && node.type === 'dir') {
-            return { output: `nano: ${rawPath}: Is a directory`, isError: true };
+            return { output: t('commands.nanoIsDirectory', 'nano: {path}: Is a directory', { path: rawPath }), isError: true };
         }
 
         const parentPath = absPath.substring(0, absPath.lastIndexOf('/')) || '/';
         const parentNode = fs.getNode(parentPath);
         if (!parentNode || parentNode.type !== 'dir') {
-            return { output: `nano: cannot open '${rawPath}': No such file or directory`, isError: true };
+            return { output: t('commands.nanoOpenError', 'nano: cannot open \'{path}\': No such file or directory', { path: rawPath }), isError: true };
         }
 
         const initialContent = node && node.type === 'file' ? node.content : '';
         const displayPath = fs.displayPath(absPath);
         return {
-            output: `[nano] Edition de ${displayPath}\n[nano] Mode simplifie: ecris ligne par ligne.\n[nano] Commandes: /help /show /save /exit`,
+            output: t(
+                'commands.nanoOpenBanner',
+                '[nano] Editing {path}\n[nano] Simplified mode: type line by line.\n[nano] Commands: /help /show /save /exit',
+                { path: displayPath }
+            ),
             nano: {
                 action: 'open',
                 path: absPath,
@@ -160,11 +169,11 @@ export function registerUtilCommands(fs, terminal) {
 
     // man
     registry.register('man', (args) => {
-        if (args.length === 0) return { output: 'What manual page do you want?\nUsage: man <command>', isError: true };
+        if (args.length === 0) return { output: t('commands.manMissing', 'What manual page do you want?\nUsage: man <command>'), isError: true };
 
         const cmd = args[0];
         const entry = registry.get(cmd);
-        if (!entry) return { output: `No manual entry for ${cmd}`, isError: true };
+        if (!entry) return { output: t('commands.manNoEntry', 'No manual entry for {command}', { command: cmd }), isError: true };
 
         const manPages = {
             ls: 'ls - list directory contents\n\nUsage: ls [OPTIONS] [PATH]\n\nOptions:\n  -a    Show hidden files (starting with .)\n  -l    Long listing format\n  -la   Combine -l and -a\n\nExamples:\n  ls           List current directory\n  ls -la       Show all files with details\n  ls /etc      List the /etc directory',
@@ -189,19 +198,25 @@ export function registerUtilCommands(fs, terminal) {
 
         const page = manPages[cmd];
         if (page) return { output: page };
-        return { output: `${cmd} - ${entry.description}\n\n(Pas de page man détaillée disponible)` };
+        return {
+            output: t(
+                'commands.manNoDetailed',
+                '{command} - {description}\n\n(No detailed man page available)',
+                { command: cmd, description: entry.description }
+            ),
+        };
     }, 'Display manual pages');
 
     // help
     registry.register('help', () => {
         const commands = registry.getNames();
-        let output = '<span class="output-banner">Commandes disponibles :</span>\n\n';
+        let output = '<span class="output-banner">Available commands:</span>\n\n';
         const maxLen = Math.max(...commands.map(c => c.length));
         for (const cmd of commands) {
             const entry = registry.get(cmd);
             output += `  <span class="output-info">${cmd.padEnd(maxLen + 2)}</span> ${entry.description}\n`;
         }
-        output += '\nTape <span class="output-info">man &lt;commande&gt;</span> pour plus de détails.';
+        output += `\n${t('commands.helpFooter', 'Type <span class="output-info">man &lt;command&gt;</span> for more details.')}`;
         return { output, isHtml: true };
     }, 'Show available commands');
 }

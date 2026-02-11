@@ -556,11 +556,11 @@ ligne 2</span>
         hint: 'Tape : help',
         points: 75,
         validate(fs, history, lastCmd, lastResult, parsed) {
+            const output = typeof lastResult?.output === 'string' ? lastResult.output : '';
             return !!parsed &&
                 parsed.type === 'command' &&
                 parsed.command === 'help' &&
-                typeof lastResult?.output === 'string' &&
-                lastResult.output.includes('Commandes disponibles');
+                (/Commandes disponibles/i.test(output) || /Available commands/i.test(output));
         },
     },
     {
