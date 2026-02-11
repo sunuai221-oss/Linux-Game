@@ -1,82 +1,84 @@
 # Linux Game
 
-Linux Game est une application web interactive pour apprendre les commandes Linux via un faux terminal et des missions progressives.
+Linux Game is an interactive web app to learn Linux commands through a simulated terminal and progressive missions.
 
-## Apercu
+## Overview
 
-- 5 niveaux pedagogiques
-- 89 missions guidees
-- Terminal simule (navigation, fichiers, recherche, permissions, pipes)
-- Lecons integrees dans les missions
-- Sauvegarde locale de la progression
-- Mode libre pour s entrainer sans validation
+- 5 learning levels
+- 89 guided missions
+- Simulated terminal (navigation, files, search, permissions, pipes)
+- Built-in lessons per mission
+- Local progress persistence
+- Free mode for open practice
+- Bilingual UI support (English/French), English by default
 
-## Fonctionnalites principales
+## Core Features
 
-- Commandes de base: `pwd`, `cd`, `ls`, `cat`, `touch`, `mkdir`, `rm`, `cp`, `mv`
-- Recherche et filtres: `grep`, `find`, `head`, `tail`, `wc`, `less`
-- Permissions: `chmod` numerique et symbolique
-- Editeur simplifie: `nano` (`/help`, `/show`, `/save`, `/exit`)
-- Missions avancees: pipes, least privilege, validations ciblees
+- Base commands: `pwd`, `cd`, `ls`, `cat`, `touch`, `mkdir`, `rm`, `cp`, `mv`
+- Search and filtering: `grep`, `find`, `head`, `tail`, `wc`, `less`
+- Permissions: numeric and symbolic `chmod`
+- Simplified editor: `nano` (`/help`, `/show`, `/save`, `/exit`)
+- Advanced missions: pipes, least-privilege scenarios, strict success-based validation
 
-## Lancer en local
+## Run Locally
 
-### Prerequis
+### Requirements
 
 - Node.js 18+
-- `npx` disponible
+- `npx`
 
-### Demarrage rapide (Windows)
+### Quick Start (Windows)
 
 ```bat
 start.bat
 ```
 
-Le script ouvre automatiquement: `http://localhost:3000`
+This opens: `http://localhost:3000`
 
-### Demarrage manuel
+### Manual Start
 
 ```powershell
 npx serve . -l 3000 -s
 ```
 
-Puis ouvrir: `http://localhost:3000`
+Then open: `http://localhost:3000`
 
 ## Tests
 
-Suite de tests de regression:
+Run regression tests:
 
 ```powershell
 node tests/targeted-regression-tests.cjs
 ```
 
-## Structure du projet
+## Project Structure
 
 ```text
-css/                Styles UI
+css/                UI styles
 js/
-  app.js            Bootstrap application
-  commands/         Registry + commandes terminal
-  filesystem/       Systeme de fichiers virtuel
-  missions/         Niveaux, missions, progression
-  terminal/         UI terminal + historique + autocomplete
-tests/              Tests cibles de non-regression
+  app.js            App bootstrap
+  commands/         Command registry and handlers
+  filesystem/       Virtual filesystem engine
+  i18n/             Localization system (en/fr)
+  missions/         Levels, missions, progression
+  terminal/         Terminal UI, history, autocomplete
+tests/              Targeted regression tests
 index.html          Entry point
-start.bat           Lancement local Windows
+start.bat           Local startup script (Windows)
 ```
 
-## Notes de version
+## Release Notes
 
 ### v1.0.0
 
-- Base complete de l application Linux Game
-- Missions multi-niveaux et systeme de score
-- Support `find` et filtres avances (`-name`, `-iname`, `-mtime`, `-mmin`)
-- Support `nano` simplifie et missions dediees
-- Permissions renforcees avec `chmod` numerique et symbolique
-- Mission least privilege dediee
-- Tests de regression et securite renforces
+- Complete Linux Game baseline application
+- Multi-level mission system with scoring
+- Extended `find` support (`-name`, `-iname`, `-mtime`, `-mmin`)
+- Simplified `nano` mode with dedicated missions
+- Strengthened permissions model with numeric + symbolic `chmod`
+- Dedicated least-privilege mission
+- Regression and security-focused test coverage
 
-## Licence
+## License
 
-Projet distribue tel quel pour apprentissage.
+Distributed as-is for educational purposes.
