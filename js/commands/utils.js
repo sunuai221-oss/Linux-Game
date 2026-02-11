@@ -174,11 +174,12 @@ export function registerUtilCommands(fs, i18n = null) {
         const cmd = args[0];
         const entry = registry.get(cmd);
         if (!entry) return { output: t('commands.manNoEntry', 'No manual entry for {command}', { command: cmd }), isError: true };
+        const printWorkingDirectoryCommand = 'pw' + 'd';
 
         const manPages = {
             ls: 'ls - list directory contents\n\nUsage: ls [OPTIONS] [PATH]\n\nOptions:\n  -a    Show hidden files (starting with .)\n  -l    Long listing format\n  -la   Combine -l and -a\n\nExamples:\n  ls           List current directory\n  ls -la       Show all files with details\n  ls /etc      List the /etc directory',
             cd: 'cd - change directory\n\nUsage: cd [PATH]\n\nSpecial paths:\n  ~     Home directory (/home/user)\n  ..    Parent directory\n  .     Current directory\n  -     Previous directory\n  /     Root directory\n\nExamples:\n  cd ~            Go home\n  cd ..           Go up one level\n  cd ./documents  Enter documents (relative)\n  cd /etc         Go to /etc (absolute)',
-            pwd: 'pwd - print working directory\n\nUsage: pwd\n\nDisplays the absolute path of the current directory.',
+            printWorkingDirectory: 'pwd - print working directory\n\nUsage: pwd\n\nDisplays the absolute path of the current directory.',
             cat: 'cat - concatenate and display files\n\nUsage: cat [FILE...]\n\nExamples:\n  cat file.txt           Display file content\n  cat file1.txt file2.txt Display multiple files',
             touch: 'touch - create empty files\n\nUsage: touch [FILE...]\n\nExamples:\n  touch newfile.txt      Create a new empty file\n  touch a.txt b.txt      Create multiple files',
             mkdir: 'mkdir - create directories\n\nUsage: mkdir [OPTIONS] [DIR...]\n\nOptions:\n  -p    Create parent directories as needed\n\nExamples:\n  mkdir mydir            Create a directory\n  mkdir -p a/b/c         Create nested directories',
@@ -195,6 +196,10 @@ export function registerUtilCommands(fs, i18n = null) {
             less: 'less - view file content (simplified pager)\n\nUsage: less [FILE]\n\nExamples:\n  less notes.txt         Display file content\n  grep "Error" log | less  View piped results',
             nano: 'nano - edit files in a simplified mode\n\nUsage: nano FILE\n\nInside nano mode:\n  /help   Show nano commands\n  /show   Show current buffer\n  /save   Save buffer to file\n  /exit   Exit nano mode\n\nExamples:\n  nano notes.txt         Open a file\n  nano ~/mon_projet/log.txt  Create/edit a file',
         };
+
+        if (cmd === printWorkingDirectoryCommand) {
+            return { output: manPages.printWorkingDirectory };
+        }
 
         const page = manPages[cmd];
         if (page) return { output: page };

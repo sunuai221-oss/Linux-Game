@@ -67,7 +67,7 @@ export class Terminal {
             case 'c':
                 if (e.ctrlKey) {
                     e.preventDefault();
-                    this._appendOutput(this._getPromptHtml() + this.inputEl.value + '^C', true);
+                    this._appendOutput(this._getPromptText() + this.inputEl.value + '^C');
                     this.inputEl.value = '';
                     this.history.reset();
                 }
@@ -106,7 +106,7 @@ export class Terminal {
 
         if (result.options.length > 1) {
             // Show options
-            this._appendOutput(this._getPromptHtml() + this._escapeHtml(input), true);
+            this._appendOutput(this._getPromptText() + input);
             this._appendOutput(result.options.join('  '));
         }
     }
@@ -117,21 +117,14 @@ export class Terminal {
         this.history.reset();
 
         // Show the command in output
-        this._appendOutput(this._getPromptHtml() + this._escapeHtml(input), true);
+        this._appendOutput(this._getPromptText() + input);
 
         if (this.nanoSession) {
             const nanoResult = this._executeNanoInput(input);
 
             if (nanoResult && nanoResult.output) {
-                if (nanoResult.isHtml) {
-                    this._appendOutput(nanoResult.output, true, nanoResult.isError ? 'output-error' : '');
-                } else {
-                    this._appendOutput(
-                        this._escapeHtml(nanoResult.output),
-                        true,
-                        nanoResult.isError ? 'output-error' : ''
-                    );
-                }
+                const safeText = this._toDisplayText(nanoResult.output, !!nanoResult.isHtml);
+                this._appendOutput(safeText, nanoResult.isError ? 'output-error' : '');
             }
 
             if (nanoResult && nanoResult._mission && !nanoResult.isError) {
@@ -177,7 +170,7 @@ export class Terminal {
         if (parsed.redirect && result && !result.isError) {
             const safeRedirectPath = this._sanitizeRedirectPath(parsed.redirect.file);
             if (!safeRedirectPath) {
-                this._appendOutput('redirection: invalid output path', false, 'output-error');
+                this._appendOutput('redirection: invalid output path', 'output-error');
                 result = { output: '', isError: true };
                 this._updatePrompt();
                 this._scrollToBottom();
@@ -185,14 +178,14 @@ export class Terminal {
                 return;
             }
 
-            const content = result.output || '';
+            const content = this._toDisplayText(result.output || '', !!result.isHtml);
             const writeResult = this.fs.writeFile(
                 safeRedirectPath,
                 parsed.redirect.type === 'append' ? '\n' + content : content,
                 parsed.redirect.type === 'append'
             );
             if (writeResult.error) {
-                this._appendOutput(writeResult.error, false, 'output-error');
+                this._appendOutput(writeResult.error, 'output-error');
             }
             // Don't show output when redirected
             result = { output: '' };
@@ -202,15 +195,8 @@ export class Terminal {
             if (result.clear) {
                 this.clear();
             } else if (result.output) {
-                if (result.isHtml) {
-                    this._appendOutput(result.output, true, result.isError ? 'output-error' : '');
-                } else {
-                    this._appendOutput(
-                        this._escapeHtml(result.output),
-                        true,
-                        result.isError ? 'output-error' : ''
-                    );
-                }
+                const safeText = this._toDisplayText(result.output, !!result.isHtml);
+                this._appendOutput(safeText, result.isError ? 'output-error' : '');
             }
         }
 
@@ -291,8 +277,13 @@ export class Terminal {
         }
 
         if (command === '/save') {
+            const safePath = this._sanitizeRedirectPath(path);
+            if (!safePath) {
+                return { output: 'nano: invalid file path', isError: true };
+            }
+
             const content = this.nanoSession.buffer.join('\n');
-            const writeResult = this.fs.writeFile(path, content, false);
+            const writeResult = this.fs.writeFile(safePath, content, false);
             if (writeResult.error) {
                 return { output: writeResult.error, isError: true };
             }
@@ -300,10 +291,10 @@ export class Terminal {
             this.nanoSession.dirty = false;
             return {
                 output: this._t('terminal.nanoSaved', '[nano] Saved {path}', { path: displayPath }),
-                nanoEvent: { action: 'save', path },
+                nanoEvent: { action: 'save', path: safePath },
                 _mission: {
                     input: `nano --save ${displayPath}`,
-                    parsed: { type: 'command', command: 'nano', args: ['--save', path], flags: {} },
+                    parsed: { type: 'command', command: 'nano', args: ['--save', safePath], flags: {} },
                 },
             };
         }
@@ -336,84 +327,23 @@ export class Terminal {
         return null;
     }
 
-    _appendOutput(text, isHtml = false, className = '') {
+    _appendOutput(text, className = '') {
         const line = document.createElement('div');
         line.className = 'output-line' + (className ? ' ' + className : '');
-        if (isHtml) {
-            line.appendChild(this._createSafeHtmlFragment(text));
-        } else {
-            line.textContent = text;
-        }
+        line.textContent = String(text);
         this.outputEl.appendChild(line);
     }
 
-    _createSafeHtmlFragment(text) {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(`<div>${String(text)}</div>`, 'text/html');
-        const source = doc.body.firstElementChild || doc.body;
-        const fragment = document.createDocumentFragment();
-
-        const allowedTags = new Set(['SPAN', 'B', 'I', 'STRONG', 'EM', 'BR']);
-        const allowedClasses = new Set([
-            'output-prompt',
-            'output-info',
-            'output-error',
-            'output-success',
-            'output-dir',
-            'output-exec',
-            'output-banner',
-            'output-permission',
-        ]);
-
-        const sanitizeNode = (node) => {
-            if (node.nodeType === Node.TEXT_NODE) {
-                return document.createTextNode(node.textContent || '');
-            }
-
-            if (node.nodeType !== Node.ELEMENT_NODE) {
-                return document.createTextNode('');
-            }
-
-            const tag = node.tagName.toUpperCase();
-            if (!allowedTags.has(tag)) {
-                return document.createTextNode(node.textContent || '');
-            }
-
-            const el = document.createElement(tag.toLowerCase());
-
-            if (tag === 'SPAN') {
-                const classNames = (node.getAttribute('class') || '')
-                    .split(/\s+/)
-                    .filter((c) => allowedClasses.has(c));
-                if (classNames.length > 0) {
-                    el.className = classNames.join(' ');
-                }
-            }
-
-            for (const child of node.childNodes) {
-                el.appendChild(sanitizeNode(child));
-            }
-
-            return el;
-        };
-
-        for (const child of source.childNodes) {
-            fragment.appendChild(sanitizeNode(child));
-        }
-
-        return fragment;
-    }
-
-    _getPromptHtml() {
+    _getPromptText() {
         if (this.nanoSession) {
-            const filePath = this._escapeHtml(this.fs.displayPath(this.nanoSession.path));
-            return `<span class="output-info">nano</span>:<span class="output-info">${filePath}</span>&gt; `;
+            const filePath = this.fs.displayPath(this.nanoSession.path);
+            return `nano:${filePath}> `;
         }
 
-        const path = this._escapeHtml(this.fs.displayPath(this.fs.cwd));
-        const username = this._escapeHtml(this.fs.username);
-        const hostname = this._escapeHtml(this.fs.hostname);
-        return `<span class="output-prompt">${username}@${hostname}</span>:<span class="output-info">${path}</span>$ `;
+        const path = this.fs.displayPath(this.fs.cwd);
+        const username = this.fs.username;
+        const hostname = this.fs.hostname;
+        return `${username}@${hostname}:${path}$ `;
     }
 
     _updatePrompt() {
@@ -433,31 +363,24 @@ export class Terminal {
         this.outputEl.scrollTop = this.outputEl.scrollHeight;
     }
 
-    _escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
     clear() {
-        this.outputEl.innerHTML = '';
+        this.outputEl.replaceChildren();
     }
 
     _showWelcome() {
-        const banner = `<span class="output-banner">
+        const banner = `
   _     _                    ____
  | |   (_)_ __  _   ___  __ / ___| __ _ _ __ ___   ___
  | |   | | '_ \\| | | \\ \\/ / |  _ / _\` | '_ \` _ \\ / _ \\
  | |___| | | | | |_| |>  <| |_| | (_| | | | | | |  __/
  |_____|_|_| |_|\\__,_/_/\\_\\\\____|\\__,_|_| |_| |_|\\___|
-</span>
-${this._t('terminal.welcomeIntro', 'Welcome to <span class="output-info">Linux Game</span>! Learn Linux commands while playing.')}
-
-${this._t('terminal.welcomeHelp', 'Type <span class="output-info">help</span> to see available commands.')}
-${this._t('terminal.welcomeMan', 'Type <span class="output-info">man &lt;command&gt;</span> for a command manual.')}
-
 `;
-        this._appendOutput(banner, true);
+        this._appendOutput(banner.trimEnd(), 'output-banner');
+        this._appendOutput(this._toDisplayText(this._t('terminal.welcomeIntro', 'Welcome to Linux Game! Learn Linux commands while playing.'), true));
+        this._appendOutput('');
+        this._appendOutput(this._toDisplayText(this._t('terminal.welcomeHelp', 'Type help to see available commands.'), true));
+        this._appendOutput(this._toDisplayText(this._t('terminal.welcomeMan', 'Type man &lt;command&gt; for a command manual.'), true));
+        this._appendOutput('');
     }
 
     focus() {
@@ -478,9 +401,32 @@ ${this._t('terminal.welcomeMan', 'Type <span class="output-info">man &lt;command
         const trimmed = path.trim();
         if (!trimmed || trimmed.length > 260) return null;
         if (trimmed.includes('\0') || trimmed.includes('\\')) return null;
+        if (trimmed.includes('..')) return null;
+        if (!/^[A-Za-z0-9._~\-\/]+$/.test(trimmed)) return null;
 
         const resolved = this.fs.resolvePath(trimmed);
         if (!resolved || !resolved.startsWith('/')) return null;
         return resolved;
+    }
+
+    _decodeHtmlEntities(text) {
+        return String(text)
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, '\'')
+            .replace(/&amp;/g, '&');
+    }
+
+    _toDisplayText(text, isHtml = false) {
+        const source = String(text ?? '');
+        if (!isHtml) return source;
+
+        const withNewlines = source
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/p>/gi, '\n')
+            .replace(/<\/div>/gi, '\n');
+        const withoutTags = withNewlines.replace(/<\/?[^>]+>/g, '');
+        return this._decodeHtmlEntities(withoutTags);
     }
 }

@@ -1,0 +1,10 @@
+{
+  "name": "linux-game",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Interactive Linux terminal learning game",
+  "scripts": {
+    "start": "npx serve . -l 3000 -s",
+    "test:regression": "node tests/targeted-regression-tests.cjs"
+  }
+}

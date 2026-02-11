@@ -631,6 +631,10 @@ export class FileSystem {
 
     // Write content to file (overwrite or append)
     writeFile(path, content, append = false) {
+        if (!this._isSafeWritePath(path)) {
+            return { error: `cannot write to '${path}': Invalid path` };
+        }
+
         const absPath = this.resolvePath(path);
         const node = this.getNode(path);
         if (node && node.type === 'dir') {
@@ -646,6 +650,16 @@ export class FileSystem {
         }
         // File doesn't exist, create it
         return this.createFile(path, content);
+    }
+
+    _isSafeWritePath(path) {
+        if (typeof path !== 'string') return false;
+        const trimmed = path.trim();
+        if (!trimmed || trimmed.length > 260) return false;
+        if (trimmed.includes('\0') || trimmed.includes('\\')) return false;
+        const segments = trimmed.split('/').filter(Boolean);
+        if (segments.some((segment) => segment === '..')) return false;
+        return true;
     }
 
     // Clone a node deeply
