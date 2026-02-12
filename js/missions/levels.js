@@ -1404,6 +1404,52 @@ Tres utile avec un <b>pipe</b> :
         },
     },
     {
+        id: 'grep-failed-n-4',
+        level: 4,
+        title: 'Echecs auth numerotes',
+        description: 'Affiche les lignes "Failed" de /var/log/auth.log avec numerotation.',
+        hint: 'Tape : grep -n "Failed" /var/log/auth.log',
+        points: 135,
+        validate(fs, history, lastCmd, lastResult, parsed) {
+            if (!parsed || parsed.type !== 'command' || parsed.command !== 'grep') return false;
+            if (!parsed.flags.n || parsed.args.length < 2) return false;
+            if (fs.resolvePath(parsed.args[1]) !== '/var/log/auth.log') return false;
+            const output = typeof lastResult?.output === 'string' ? lastResult.output.trim() : '';
+            if (!output.includes('Failed')) return false;
+            return output.split('\n').some(line => /^\d+:/.test(line));
+        },
+    },
+    {
+        id: 'find-tmp-files-4',
+        level: 4,
+        title: 'Fichiers temporaires',
+        description: 'Trouve tous les fichiers .tmp dans /tmp.',
+        hint: 'Tape : find /tmp -name "*.tmp"',
+        points: 130,
+        validate(fs, history, lastCmd, lastResult, parsed) {
+            if (!parsed || parsed.type !== 'command' || parsed.command !== 'find') return false;
+            if (!(parsed.args.includes('-name') && parsed.args.includes('*.tmp'))) return false;
+            if (!parsed.args.includes('/tmp')) return false;
+            const output = typeof lastResult?.output === 'string' ? lastResult.output : '';
+            return output.includes('/tmp/cache_old.tmp') && output.includes('/tmp/session_123.tmp');
+        },
+    },
+    {
+        id: 'head-system-3-4',
+        level: 4,
+        title: 'Debut system.log',
+        description: 'Affiche les 3 premieres lignes de /var/log/system.log.',
+        hint: 'Tape : head -n 3 /var/log/system.log',
+        points: 130,
+        validate(fs, history, lastCmd, lastResult, parsed) {
+            if (!parsed || parsed.type !== 'command' || parsed.command !== 'head') return false;
+            const targetArg = parsed.args.find(arg => fs.resolvePath(arg) === '/var/log/system.log');
+            if (!targetArg) return false;
+            const output = typeof lastResult?.output === 'string' ? lastResult.output.trim() : '';
+            return output.length > 0 && output.split('\n').length === 3;
+        },
+    },
+    {
         id: 'nano-note-report-4',
         level: 4,
         title: 'Note d analyse',

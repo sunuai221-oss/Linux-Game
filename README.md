@@ -5,7 +5,7 @@ Linux Game is an interactive web app to learn Linux commands through a simulated
 ## Overview
 
 - 5 learning levels
-- 97 guided missions
+- 100 guided missions
 - Simulated terminal (navigation, files, search, permissions, pipes)
 - Built-in lessons per mission
 - Local progress persistence
