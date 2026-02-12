@@ -580,6 +580,55 @@ ligne 2</span>
         },
     },
     {
+        id: 'whatis-grep-2',
+        level: 2,
+        title: 'Question: whatis',
+        description: 'Utilise whatis pour afficher la description rapide de la commande grep.',
+        hint: 'Tape : whatis grep',
+        points: 85,
+        validate(fs, history, lastCmd, lastResult, parsed) {
+            return !!parsed &&
+                parsed.type === 'command' &&
+                parsed.command === 'whatis' &&
+                parsed.args.includes('grep') &&
+                typeof lastResult?.output === 'string' &&
+                lastResult.output.toLowerCase().includes('grep -') &&
+                lastResult.output.toLowerCase().includes('search for patterns in files');
+        },
+    },
+    {
+        id: 'man-grep-2',
+        level: 2,
+        title: 'Question: man grep',
+        description: 'Consulte man grep et repere le flag qui affiche les numeros de ligne.',
+        hint: 'Tape : man grep',
+        points: 85,
+        validate(fs, history, lastCmd, lastResult, parsed) {
+            return !!parsed &&
+                parsed.type === 'command' &&
+                parsed.command === 'man' &&
+                parsed.args[0] === 'grep' &&
+                typeof lastResult?.output === 'string' &&
+                lastResult.output.includes('-n') &&
+                lastResult.output.includes('Show line numbers');
+        },
+    },
+    {
+        id: 'apropos-permissions-2',
+        level: 2,
+        title: 'Question: apropos',
+        description: 'Utilise apropos pour trouver la commande liee aux permissions.',
+        hint: 'Tape : apropos permission',
+        points: 90,
+        validate(fs, history, lastCmd, lastResult, parsed) {
+            if (!parsed || parsed.type !== 'command' || parsed.command !== 'apropos') return false;
+            const query = parsed.args.join(' ').toLowerCase();
+            if (!query.includes('permission')) return false;
+            return typeof lastResult?.output === 'string' &&
+                lastResult.output.toLowerCase().includes('chmod -');
+        },
+    },
+    {
         id: 'less-notes-1',
         level: 2,
         title: 'Lis avec less',

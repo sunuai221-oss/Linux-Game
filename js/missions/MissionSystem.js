@@ -27,11 +27,11 @@ export class MissionSystem {
     onCommand(input, parsed, result) {
         if (this.freeMode) return;
         if (!parsed) return;
-        if (result && result.isError) return;
-
-        this.commandHistory.push(input);
         const mission = this.missions[this.currentMissionIndex];
         if (!mission || this.completed.has(mission.id)) return;
+        if (result && result.isError && !mission.acceptErrorResult) return;
+
+        this.commandHistory.push(input);
 
         try {
             const isCompleted = mission.validate(
@@ -46,7 +46,7 @@ export class MissionSystem {
                 this._completeMission(mission);
             }
         } catch (e) {
-            // Validation error, ignore
+            console.warn(`[MissionSystem] Validation error for mission '${mission.id}':`, e);
         }
     }
 
@@ -317,15 +317,39 @@ export class MissionSystem {
 
     _loadProgress() {
         const data = storage.load();
-        if (!data) return;
+        if (!data || typeof data !== 'object') return;
 
-        this.completed = new Set(data.completed || []);
-        this.score = data.score || 0;
-        this.hintsUsed = new Set(data.hintsUsed || []);
-        this.currentMissionIndex = data.currentMissionIndex || 0;
+        this.completed = new Set(Array.isArray(data.completed) ? data.completed : []);
+        this.score = Number.isFinite(data.score) ? data.score : 0;
+        this.hintsUsed = new Set(Array.isArray(data.hintsUsed) ? data.hintsUsed : []);
+        this.currentMissionIndex = Number.isInteger(data.currentMissionIndex) && data.currentMissionIndex >= 0
+            ? data.currentMissionIndex
+            : 0;
+        if (this.currentMissionIndex > this.missions.length) {
+            this.currentMissionIndex = this.missions.length;
+        }
 
         if (data.filesystem) {
-            this.fs.restore(data.filesystem);
+            try {
+                const restored = this.fs.restore(data.filesystem);
+                if (restored && restored.error) {
+                    console.warn('[MissionSystem] Ignoring corrupted filesystem snapshot:', restored.error);
+                    this.completed = new Set();
+                    this.score = 0;
+                    this.hintsUsed = new Set();
+                    this.currentMissionIndex = 0;
+                    storage.clear();
+                    return;
+                }
+            } catch (error) {
+                console.warn('[MissionSystem] Failed to restore filesystem snapshot:', error);
+                this.completed = new Set();
+                this.score = 0;
+                this.hintsUsed = new Set();
+                this.currentMissionIndex = 0;
+                storage.clear();
+                return;
+            }
         }
 
         // Re-advance to find next uncompleted

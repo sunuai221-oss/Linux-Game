@@ -50,6 +50,7 @@ const { exports: fileExports } = loadExports('js/commands/files.js', ['registerF
 });
 const { exports: levelsExports } = loadExports('js/missions/levels.js', ['missions']);
 const { exports: missionSystemExports } = loadExports('js/missions/MissionSystem.js', ['MissionSystem']);
+const { exports: autocompleteExports } = loadExports('js/terminal/autocomplete.js', ['Autocomplete']);
 
 const { FileSystem } = fsExports;
 const { defaultStructure } = defaultExports;
@@ -61,6 +62,7 @@ const { registerFileCommands } = fileExports;
 const { CommandParser } = parserExports;
 const { missions } = levelsExports;
 const { MissionSystem } = missionSystemExports;
+const { Autocomplete } = autocompleteExports;
 
 const tests = [];
 
@@ -205,6 +207,32 @@ test('MissionSystem.onCommand ignores failed commands', () => {
 
     assert.strictEqual(completionCount, 0);
     assert.strictEqual(mock.commandHistory.length, 0);
+});
+
+test('MissionSystem.onCommand can process failed commands when mission accepts errors', () => {
+    let completionCount = 0;
+    const mock = {
+        freeMode: false,
+        commandHistory: [],
+        missions: [{
+            id: 'm-err',
+            acceptErrorResult: true,
+            validate: () => true,
+        }],
+        currentMissionIndex: 0,
+        completed: new Set(),
+        _completeMission: () => { completionCount += 1; },
+    };
+
+    MissionSystem.prototype.onCommand.call(
+        mock,
+        'cat /forbidden',
+        { type: 'command', command: 'cat', args: ['/forbidden'], flags: {} },
+        { output: 'cat: /forbidden: Permission denied', isError: true }
+    );
+
+    assert.strictEqual(completionCount, 1);
+    assert.strictEqual(mock.commandHistory.length, 1);
 });
 
 test('cat mission now requires successful output for the expected file', () => {
@@ -395,6 +423,56 @@ test('man nano documents simplified nano controls', () => {
     assert.ok(result.output.includes('/exit'));
 });
 
+test('whatis returns one-line description for an existing command', () => {
+    const vfs = new FileSystem(defaultStructure);
+    registerSearchCommands(vfs);
+    registerUtilCommands(vfs);
+
+    const whatisHandler = registry.get('whatis').handler;
+    const result = whatisHandler(['grep'], {}, null, {});
+
+    assert.ok(typeof result.output === 'string');
+    assert.ok(result.output.includes('grep - Search for patterns in files'));
+});
+
+test('apropos finds permission-related commands from keyword search', () => {
+    const vfs = new FileSystem(defaultStructure);
+    registerFileCommands(vfs);
+    registerUtilCommands(vfs);
+
+    const aproposHandler = registry.get('apropos').handler;
+    const result = aproposHandler(['permission'], {}, null, {});
+
+    assert.ok(typeof result.output === 'string');
+    assert.ok(result.output.includes('chmod - Change file permissions'));
+});
+
+test('manual pages exist for whatis and apropos', () => {
+    const vfs = new FileSystem(defaultStructure);
+    registerUtilCommands(vfs);
+
+    const manHandler = registry.get('man').handler;
+    const whatisPage = manHandler(['whatis'], {}, null, {});
+    const aproposPage = manHandler(['apropos'], {}, null, {});
+
+    assert.ok(typeof whatisPage.output === 'string' && whatisPage.output.includes('whatis - display one-line manual page descriptions'));
+    assert.ok(typeof aproposPage.output === 'string' && aproposPage.output.includes('apropos - search command descriptions by keyword'));
+});
+
+test('question missions for whatis/man/apropos are present in level 2', () => {
+    const expected = [
+        ['whatis-grep-2', 2],
+        ['man-grep-2', 2],
+        ['apropos-permissions-2', 2],
+    ];
+
+    for (const [id, level] of expected) {
+        const mission = missions.find((m) => m.id === id);
+        assert.ok(mission, `Missing mission ${id}`);
+        assert.strictEqual(mission.level, level);
+    }
+});
+
 test('nano missions are present across all 5 levels', () => {
     const expected = [
         ['nano-open-exit-1', 1],
@@ -466,6 +544,24 @@ test('permission enforcement blocks reading file without read bit', () => {
     const readResult = vfs.readFile('/home/user/mon_projet/private.txt');
     assert.ok(readResult.error);
     assert.ok(readResult.error.includes('Permission denied'));
+});
+
+test('new files and directories inherit current user ownership metadata', () => {
+    const vfs = new FileSystem(defaultStructure);
+    vfs.username = 'root';
+    vfs._syncCurrentUserGroups();
+
+    const fileResult = vfs.createFile('/tmp/root-owned.txt', 'x');
+    assert.ok(fileResult.success);
+    const fileNode = vfs.getNode('/tmp/root-owned.txt');
+    assert.strictEqual(fileNode.owner, 'root');
+    assert.strictEqual(fileNode.group, 'root');
+
+    const dirResult = vfs.createDir('/tmp/root-owned-dir', false);
+    assert.ok(dirResult.success);
+    const dirNode = vfs.getNode('/tmp/root-owned-dir');
+    assert.strictEqual(dirNode.owner, 'root');
+    assert.strictEqual(dirNode.group, 'root');
 });
 
 test('least privilege mission is present and validates symbolic chmod outcome', () => {
@@ -554,6 +650,153 @@ test('sudo/account management missions are present in level 5', () => {
         assert.ok(mission, `Missing mission ${id}`);
         assert.strictEqual(mission.level, 5);
     }
+});
+
+test('parser supports redirect on piped commands while preserving quoted pipes', () => {
+    const parsed = CommandParser.parse('echo "a | b" | grep a > /tmp/out.txt');
+    assert.ok(parsed);
+    assert.strictEqual(parsed.type, 'pipe');
+    assert.strictEqual(parsed.commands.length, 2);
+    assert.ok(parsed.redirect);
+    assert.strictEqual(parsed.redirect.type, 'overwrite');
+    assert.strictEqual(parsed.redirect.file, '/tmp/out.txt');
+    assert.strictEqual(parsed.commands[0].args[0], 'a | b');
+});
+
+test('parser ignores escaped pipe and redirect operators', () => {
+    const escapedPipe = CommandParser.parse('echo a\\|b');
+    assert.ok(escapedPipe);
+    assert.strictEqual(escapedPipe.type, 'command');
+    assert.strictEqual(escapedPipe.args.length, 1);
+    assert.strictEqual(escapedPipe.args[0], 'a|b');
+
+    const escapedRedirect = CommandParser.parse('echo a\\>b');
+    assert.ok(escapedRedirect);
+    assert.strictEqual(escapedRedirect.type, 'command');
+    assert.ok(!escapedRedirect.redirect);
+    assert.strictEqual(escapedRedirect.args.length, 1);
+    assert.strictEqual(escapedRedirect.args[0], 'a>b');
+});
+
+test('write path normalization blocks unsafe characters and keeps valid dotted names', () => {
+    const vfs = new FileSystem(defaultStructure);
+
+    assert.strictEqual(vfs.normalizeWritePath('/home/user/documents/bad<script>.txt'), null);
+    assert.strictEqual(vfs.normalizeWritePath('/home/user/documents/../secrets.txt'), null);
+    assert.strictEqual(vfs.normalizeWritePath('/home/user/documents/file..txt'), '/home/user/documents/file..txt');
+
+    const blocked = vfs.writeFile('/home/user/documents/bad<script>.txt', 'x');
+    assert.ok(blocked.error);
+    assert.ok(blocked.error.includes('Invalid path'));
+});
+
+test('filesystem restore rejects malformed snapshots without corrupting current state', () => {
+    const vfs = new FileSystem(defaultStructure);
+    const before = vfs.readFile('/home/user/documents/notes.txt').content;
+
+    const result = vfs.restore({ cwd: '/home/user' });
+
+    assert.ok(result.error);
+    const after = vfs.readFile('/home/user/documents/notes.txt').content;
+    assert.strictEqual(after, before);
+});
+
+test('grep reports invalid regular expressions as command errors', () => {
+    const vfs = new FileSystem(defaultStructure);
+    registerSearchCommands(vfs);
+
+    const grepHandler = registry.get('grep').handler;
+    const result = grepHandler(['[abc', '/home/user/documents/notes.txt'], {}, null, {});
+
+    assert.ok(result.isError);
+    assert.ok(result.output.includes('invalid regular expression'));
+});
+
+test('grep enforces read permissions on target files', () => {
+    const vfs = new FileSystem(defaultStructure);
+    vfs.createFile('/home/user/documents/private-grep.txt', 'secret');
+    const chmodResult = vfs.chmod('/home/user/documents/private-grep.txt', '000');
+    assert.ok(chmodResult.success);
+    registerSearchCommands(vfs);
+
+    const grepHandler = registry.get('grep').handler;
+    const result = grepHandler(['secret', '/home/user/documents/private-grep.txt'], {}, null, {});
+
+    assert.ok(result.isError);
+    assert.ok(result.output.includes('Permission denied'));
+});
+
+test('find does not traverse directories without read/execute permissions', () => {
+    const vfs = new FileSystem(defaultStructure);
+    vfs.createDir('/home/user/secret_zone', false);
+    vfs.createFile('/home/user/secret_zone/token.txt', 'token');
+    const chmodResult = vfs.chmod('/home/user/secret_zone', '000');
+    assert.ok(chmodResult.success);
+    registerSearchCommands(vfs);
+
+    const parsed = CommandParser.parse('find ~ -name "token.txt"');
+    const findHandler = registry.get('find').handler;
+    const result = findHandler(parsed.args, parsed.flags, null, {});
+
+    assert.ok(!result.output || !result.output.includes('/home/user/secret_zone/token.txt'));
+});
+
+test('storage.save writes versioned payload and storage.load preserves backward compatibility', () => {
+    const fakeLocalStorage = (() => {
+        const store = new Map();
+        return {
+            setItem(key, value) { store.set(key, String(value)); },
+            getItem(key) { return store.has(key) ? store.get(key) : null; },
+            removeItem(key) { store.delete(key); },
+        };
+    })();
+
+    const { exports: storageExports } = loadExports('js/missions/storage.js', ['storage'], {
+        localStorage: fakeLocalStorage,
+    });
+    const { storage } = storageExports;
+
+    const payload = { score: 42, completed: ['m1'] };
+    storage.save(payload);
+    const rawSaved = JSON.parse(fakeLocalStorage.getItem('linux-game-save'));
+    assert.strictEqual(rawSaved.version, 1);
+    assert.strictEqual(JSON.stringify(storage.load()), JSON.stringify(payload));
+
+    fakeLocalStorage.setItem('linux-game-save', JSON.stringify({ score: 7, completed: ['legacy'] }));
+    const legacyLoaded = storage.load();
+    assert.strictEqual(JSON.stringify(legacyLoaded), JSON.stringify({ score: 7, completed: ['legacy'] }));
+});
+
+test('autocomplete hides entries when current user cannot list the directory', () => {
+    const vfs = new FileSystem(defaultStructure);
+    vfs.createDir('/home/user/locked', false);
+    vfs.createFile('/home/user/locked/secret.txt', 'x');
+    vfs.chmod('/home/user/locked', '000');
+
+    const autocomplete = new Autocomplete(vfs, registry);
+    const result = autocomplete.complete('cat /home/user/locked/s');
+
+    assert.strictEqual(result.completed, null);
+    assert.strictEqual(result.options.length, 0);
+});
+
+test('parser returns syntax errors for unmatched quote and missing redirect target', () => {
+    const unmatched = CommandParser.parse('echo "hello');
+    assert.ok(unmatched);
+    assert.strictEqual(unmatched.type, 'error');
+    assert.ok(unmatched.error.includes('unmatched quote'));
+
+    const missingRedirectTarget = CommandParser.parse('echo hello >');
+    assert.ok(missingRedirectTarget);
+    assert.strictEqual(missingRedirectTarget.type, 'error');
+    assert.ok(missingRedirectTarget.error.includes('newline'));
+});
+
+test('parser returns syntax error for trailing pipe', () => {
+    const parsed = CommandParser.parse('ls |');
+    assert.ok(parsed);
+    assert.strictEqual(parsed.type, 'error');
+    assert.ok(parsed.error.includes('|'));
 });
 
 run();

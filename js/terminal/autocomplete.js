@@ -49,10 +49,12 @@ export class Autocomplete {
         if (dirPath === '~') resolvedDir = this.fs.home;
         else if (dirPath.startsWith('~/')) resolvedDir = this.fs.home + dirPath.slice(1);
 
-        const node = this.fs.getNode(resolvedDir);
-        if (!node || node.type !== 'dir') return { completed: null, options: [] };
+        const listing = this.fs.listDir(resolvedDir, true);
+        if (!listing || listing.error || !Array.isArray(listing.entries)) {
+            return { completed: null, options: [] };
+        }
 
-        const entries = Object.keys(node.children).filter(name => name.startsWith(prefix));
+        const entries = listing.entries.filter(entry => entry.name.startsWith(prefix));
 
         if (entries.length === 0) return { completed: null, options: [] };
 
@@ -60,18 +62,18 @@ export class Autocomplete {
         const basePath = partial.includes('/') ? partial.substring(0, partial.lastIndexOf('/') + 1) : '';
 
         if (entries.length === 1) {
-            const name = entries[0];
-            const child = node.children[name];
-            const suffix = child.type === 'dir' ? '/' : ' ';
+            const entry = entries[0];
+            const suffix = entry.type === 'dir' ? '/' : ' ';
+            const name = entry.name;
             return { completed: basePath + name + suffix, options: [] };
         }
 
-        const common = this._commonPrefix(entries);
+        const names = entries.map(entry => entry.name);
+        const common = this._commonPrefix(names);
         return {
             completed: common !== prefix ? basePath + common : null,
-            options: entries.map(name => {
-                const child = node.children[name];
-                return child.type === 'dir' ? name + '/' : name;
+            options: entries.map(entry => {
+                return entry.type === 'dir' ? entry.name + '/' : entry.name;
             }),
         };
     }

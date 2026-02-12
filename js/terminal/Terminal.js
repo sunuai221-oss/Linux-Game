@@ -158,6 +158,14 @@ export class Terminal {
             this._updatePrompt();
             return;
         }
+        if (parsed.type === 'error') {
+            const errorResult = { output: parsed.error || 'syntax error', isError: true };
+            this._appendOutput(errorResult.output, 'output-error');
+            this._updatePrompt();
+            this._scrollToBottom();
+            this.onCommandExecuted(input, parsed, errorResult);
+            return;
+        }
 
         let result;
         if (parsed.type === 'pipe') {
@@ -179,16 +187,24 @@ export class Terminal {
             }
 
             const content = this._toDisplayText(result.output || '', !!result.isHtml);
+            const existingNode = this.fs.getNode(safeRedirectPath);
+            const shouldPrefixNewline = parsed.redirect.type === 'append'
+                && existingNode
+                && existingNode.type === 'file'
+                && String(existingNode.content || '').length > 0;
+            const writePayload = shouldPrefixNewline ? '\n' + content : content;
             const writeResult = this.fs.writeFile(
                 safeRedirectPath,
-                parsed.redirect.type === 'append' ? '\n' + content : content,
+                writePayload,
                 parsed.redirect.type === 'append'
             );
             if (writeResult.error) {
                 this._appendOutput(writeResult.error, 'output-error');
+                result = { output: '', isError: true };
+            } else {
+                // Don't show output when redirected
+                result = { output: '' };
             }
-            // Don't show output when redirected
-            result = { output: '' };
         }
 
         if (result) {
@@ -239,7 +255,7 @@ export class Terminal {
             if (cmd.type === 'empty') continue;
             result = this._executeSingle(cmd, stdin);
             if (result.isError) return result;
-            stdin = result.output || '';
+            stdin = this._toDisplayText(result.output || '', !!result.isHtml);
         }
 
         return result;
@@ -397,6 +413,10 @@ export class Terminal {
     }
 
     _sanitizeRedirectPath(path) {
+        if (this.fs && typeof this.fs.normalizeWritePath === 'function') {
+            return this.fs.normalizeWritePath(path);
+        }
+
         if (typeof path !== 'string') return null;
         const trimmed = path.trim();
         if (!trimmed || trimmed.length > 260) return null;

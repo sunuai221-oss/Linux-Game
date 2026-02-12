@@ -461,6 +461,10 @@ export class FileSystem {
         return 'o';
     }
 
+    _getCurrentPrimaryGroup() {
+        return this.users.get(this.username)?.primaryGroup || this.username;
+    }
+
     _hasPermission(node, permission) {
         if (this.username === 'root') return true;
         const perms = (node.permissions || '---------').padEnd(9, '-').slice(0, 9);
@@ -576,8 +580,8 @@ export class FileSystem {
             type: 'file',
             content,
             permissions: 'rw-r--r--',
-            owner: 'user',
-            group: this.username,
+            owner: this.username,
+            group: this._getCurrentPrimaryGroup(),
             parent,
             mtime: Date.now(),
         };
@@ -601,8 +605,8 @@ export class FileSystem {
                         type: 'dir',
                         children: {},
                         permissions: 'rwxr-xr-x',
-                        owner: 'user',
-                        group: this.username,
+                        owner: this.username,
+                        group: this._getCurrentPrimaryGroup(),
                         parent: current,
                         mtime: Date.now(),
                     };
@@ -632,8 +636,8 @@ export class FileSystem {
             type: 'dir',
             children: {},
             permissions: 'rwxr-xr-x',
-            owner: 'user',
-            group: this.username,
+            owner: this.username,
+            group: this._getCurrentPrimaryGroup(),
             parent,
             mtime: Date.now(),
         };
@@ -886,9 +890,15 @@ export class FileSystem {
         if (!start || start.type !== 'dir') return results;
 
         const basePath = this.resolvePath(startPath || '.');
+        if (!this._canTraverse(basePath, true) || !this._hasPermission(start, 'r') || !this._hasPermission(start, 'x')) {
+            return results;
+        }
         const now = Date.now();
 
         const walk = (node, currentPath) => {
+            if (node.type !== 'dir') return;
+            if (!this._hasPermission(node, 'r') || !this._hasPermission(node, 'x')) return;
+
             for (const [childName, child] of Object.entries(node.children)) {
                 const childPath = currentPath === '/' ? '/' + childName : currentPath + '/' + childName;
 
@@ -918,7 +928,9 @@ export class FileSystem {
                 }
 
                 if (matches) results.push(childPath);
-                if (child.type === 'dir') walk(child, childPath);
+                if (child.type === 'dir' && this._hasPermission(child, 'r') && this._hasPermission(child, 'x')) {
+                    walk(child, childPath);
+                }
             }
         };
 
@@ -947,7 +959,12 @@ export class FileSystem {
     // Grep: search inside files
     grep(pattern, path, options = {}) {
         const results = [];
-        const regex = new RegExp(pattern, options.ignoreCase ? 'gi' : 'g');
+        let regex;
+        try {
+            regex = new RegExp(pattern, options.ignoreCase ? 'gi' : 'g');
+        } catch (error) {
+            return { error: `grep: invalid regular expression '${pattern}'` };
+        }
 
         const searchFile = (node, filePath) => {
             if (node.type === 'file') {
@@ -969,8 +986,13 @@ export class FileSystem {
             for (const [name, child] of Object.entries(node.children)) {
                 const childPath = dirPath === '/' ? '/' + name : dirPath + '/' + name;
                 if (child.type === 'file') {
-                    searchFile(child, childPath);
+                    if (this._canTraverse(childPath, false) && this._hasPermission(child, 'r')) {
+                        searchFile(child, childPath);
+                    }
                 } else if (child.type === 'dir' && options.recursive) {
+                    if (!this._canTraverse(childPath, true) || !this._hasPermission(child, 'r') || !this._hasPermission(child, 'x')) {
+                        continue;
+                    }
                     searchDir(child, childPath);
                 }
             }
@@ -978,10 +1000,19 @@ export class FileSystem {
 
         const target = this.getNode(path);
         if (!target) return { error: `grep: ${path}: No such file or directory` };
+        const absPath = this.resolvePath(path);
+
+        if (!this._canTraverse(absPath, target.type === 'dir')) {
+            return { error: `grep: ${path}: Permission denied` };
+        }
 
         if (target.type === 'file') {
+            if (!this._hasPermission(target, 'r')) return { error: `grep: ${path}: Permission denied` };
             searchFile(target, this.resolvePath(path));
         } else if (options.recursive) {
+            if (!this._hasPermission(target, 'r') || !this._hasPermission(target, 'x')) {
+                return { error: `grep: ${path}: Permission denied` };
+            }
             searchDir(target, this.resolvePath(path));
         } else {
             return { error: `grep: ${path}: Is a directory` };
@@ -992,12 +1023,13 @@ export class FileSystem {
 
     // Write content to file (overwrite or append)
     writeFile(path, content, append = false) {
-        if (!this._isSafeWritePath(path)) {
+        const normalizedPath = this.normalizeWritePath(path);
+        if (!normalizedPath) {
             return { error: `cannot write to '${path}': Invalid path` };
         }
 
-        const absPath = this.resolvePath(path);
-        const node = this.getNode(path);
+        const absPath = normalizedPath;
+        const node = this.getNode(normalizedPath);
         if (node && node.type === 'dir') {
             return { error: `cannot write to '${path}': Is a directory` };
         }
@@ -1010,17 +1042,26 @@ export class FileSystem {
             return { success: true };
         }
         // File doesn't exist, create it
-        return this.createFile(path, content);
+        return this.createFile(normalizedPath, content);
+    }
+
+    normalizeWritePath(path) {
+        if (typeof path !== 'string') return null;
+        const trimmed = path.trim();
+        if (!trimmed || trimmed.length > 260) return null;
+        if (trimmed.includes('\0') || trimmed.includes('\\')) return null;
+        if (!/^[A-Za-z0-9._~\-\/]+$/.test(trimmed)) return null;
+
+        const segments = trimmed.split('/').filter(Boolean);
+        if (segments.some((segment) => segment === '..')) return null;
+
+        const resolved = this.resolvePath(trimmed);
+        if (!resolved || !resolved.startsWith('/')) return null;
+        return resolved;
     }
 
     _isSafeWritePath(path) {
-        if (typeof path !== 'string') return false;
-        const trimmed = path.trim();
-        if (!trimmed || trimmed.length > 260) return false;
-        if (trimmed.includes('\0') || trimmed.includes('\\')) return false;
-        const segments = trimmed.split('/').filter(Boolean);
-        if (segments.some((segment) => segment === '..')) return false;
-        return true;
+        return this.normalizeWritePath(path) !== null;
     }
 
     // Clone a node deeply
@@ -1098,37 +1139,67 @@ export class FileSystem {
 
     // Restore from serialized data
     restore(data) {
-        this.root = this._buildTree(data.tree, '/');
-        this.cwd = data.cwd || this.home;
-
-        if (Array.isArray(data.groupIds)) {
-            this.groupIds = new Map(data.groupIds);
-        } else {
-            this.groupIds = new Map();
+        if (!data || typeof data !== 'object' || !data.tree || typeof data.tree !== 'object') {
+            return { error: 'filesystem restore: invalid snapshot' };
         }
 
-        this.users = new Map();
-        if (Array.isArray(data.users)) {
-            for (const user of data.users) {
-                this.users.set(user.username, {
-                    ...user,
-                    supplementalGroups: new Set(user.supplementalGroups || []),
-                });
+        const snapshot = {
+            root: this.root,
+            cwd: this.cwd,
+            users: this.users,
+            groupIds: this.groupIds,
+            nextUid: this.nextUid,
+            nextGid: this.nextGid,
+        };
+
+        try {
+            this.root = this._buildTree(data.tree, '/');
+
+            if (Array.isArray(data.groupIds)) {
+                this.groupIds = new Map(data.groupIds);
+            } else {
+                this.groupIds = new Map();
             }
-        }
 
-        this.nextUid = Number.isInteger(data.nextUid) ? data.nextUid : 1001;
-        this.nextGid = Number.isInteger(data.nextGid) ? data.nextGid : 1001;
-
-        if (this.users.size === 0 || this.groupIds.size === 0) {
             this.users = new Map();
-            this.groupIds = new Map();
-            this.nextUid = 1001;
-            this.nextGid = 1001;
-            this._initAccountsFromTree();
-        }
+            if (Array.isArray(data.users)) {
+                for (const user of data.users) {
+                    if (!user || typeof user.username !== 'string') continue;
+                    this.users.set(user.username, {
+                        ...user,
+                        supplementalGroups: new Set(user.supplementalGroups || []),
+                    });
+                }
+            }
 
-        this._syncCurrentUserGroups();
-        this._refreshPasswdFile();
+            this.nextUid = Number.isInteger(data.nextUid) ? data.nextUid : 1001;
+            this.nextGid = Number.isInteger(data.nextGid) ? data.nextGid : 1001;
+
+            if (this.users.size === 0 || this.groupIds.size === 0) {
+                this.users = new Map();
+                this.groupIds = new Map();
+                this.nextUid = 1001;
+                this.nextGid = 1001;
+                this._initAccountsFromTree();
+            }
+
+            const restoredCwd = typeof data.cwd === 'string' ? this.resolvePath(data.cwd) : this.home;
+            const cwdNode = this.getNode(restoredCwd);
+            this.cwd = cwdNode && cwdNode.type === 'dir' ? restoredCwd : this.home;
+
+            this._syncCurrentUserGroups();
+            this._refreshPasswdFile();
+            return { success: true };
+        } catch (error) {
+            this.root = snapshot.root;
+            this.cwd = snapshot.cwd;
+            this.users = snapshot.users;
+            this.groupIds = snapshot.groupIds;
+            this.nextUid = snapshot.nextUid;
+            this.nextGid = snapshot.nextGid;
+            this._syncCurrentUserGroups();
+            this._refreshPasswdFile();
+            return { error: 'filesystem restore: failed to apply snapshot' };
+        }
     }
 }

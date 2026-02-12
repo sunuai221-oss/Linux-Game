@@ -16,6 +16,7 @@ Linux Game is an interactive web app to learn Linux commands through a simulated
 
 - Base commands: `pwd`, `cd`, `ls`, `cat`, `touch`, `mkdir`, `rm`, `cp`, `mv`
 - Search and filtering: `grep`, `find`, `head`, `tail`, `wc`, `less`
+- Command discovery and docs: `whatis`, `man`, `apropos`
 - Permissions: numeric and symbolic `chmod`
 - Simplified editor: `nano` (`/help`, `/show`, `/save`, `/exit`)
 - Advanced missions: pipes, least-privilege scenarios, strict success-based validation
@@ -68,6 +69,26 @@ start.bat           Local startup script (Windows)
 ```
 
 ## Release Notes
+
+### v1.1.0
+
+- Parser hardening:
+  - better handling of escaped operators (`\|`, `\>`)
+  - explicit syntax errors for unmatched quotes, trailing pipes, and missing redirect targets
+  - safer pipe + redirection parsing flow
+- Terminal execution hardening:
+  - redirected write failures now propagate as command errors
+  - parser syntax errors are surfaced directly in terminal output
+- Filesystem and permissions consistency:
+  - unified safe write-path normalization API
+  - permission-aware `grep`/`find` traversal checks
+  - new files/directories inherit current user ownership metadata
+- Mission and persistence robustness:
+  - mission error handling supports opt-in validation for expected command failures
+  - versioned `localStorage` payloads with legacy compatibility fallback
+  - safer filesystem snapshot restore guards against malformed/corrupted saves
+- Autocomplete now respects directory listing permissions.
+- Expanded regression suite for parser, permissions, persistence, autocomplete, and mission error flows.
 
 ### v1.0.0
 
